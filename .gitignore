@@ -1,0 +1,26 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+.terraform.lock.hcl
+
+# Environment variables
+.env
+*.log
+
+# Local development
+__pycache__/
+*.pyc
+venv/
+.vscode/
+.idea/
+
+# Secrets
+*.pem
+*.key
+*.crt
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,14 @@
+# Required variables - must be set
+vcd_password    = "your-vcd-password"
+vcd_org         = "your-org-name"
+vcd_vdc         = "your-vdc-name"
+vcd_url         = "https://your-vcd-instance.example.com/api"
+ssh_public_key  = "ssh-rsa AAAA... your-key-here"
+default_gateway = "192.168.1.1"  # Your network gateway
+
+# Optional variables - defaults provided but can be overridden
+vcd_user        = "administrator"
+network_segment = "default-network"
+template_name   = "ubuntu-template"
+vm_name         = "inference-demo-vm"
+dns_servers     = ["8.8.8.8", "8.8.4.4"]
