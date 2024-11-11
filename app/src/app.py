@@ -41,14 +41,17 @@ def generate():
         if model_id not in MODELS:
             return jsonify({'error': 'Invalid model selection'}), 400
 
-        return Response(
-            stream_with_context(generate_stream(
-                prompt=prompt,
-                model_id=model_id,
-                max_length=max_length
-            )),
-            mimetype='text/event-stream'
+        response_text = generate_text(
+            prompt=prompt,
+            model_id=model_id,
+            max_length=max_length
         )
+        
+        return jsonify({
+            'response': response_text,
+            'model': MODELS[model_id]['display_name'],
+            'prompt': prompt
+        })
 
     except Exception as e:
         logger.exception("Generation error")
