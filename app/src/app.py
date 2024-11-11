@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, Response, stream_with_context
 import logging
 import os
 import torch
@@ -41,17 +41,14 @@ def generate():
         if model_id not in MODELS:
             return jsonify({'error': 'Invalid model selection'}), 400
 
-        response_text = generate_text(
-            prompt=prompt,
-            model_id=model_id,
-            max_length=max_length
+        return Response(
+            stream_with_context(generate_stream(
+                prompt=prompt,
+                model_id=model_id,
+                max_length=max_length
+            )),
+            mimetype='text/event-stream'
         )
-        
-        return jsonify({
-            'response': response_text,
-            'model': MODELS[model_id]['display_name'],
-            'prompt': prompt
-        })
 
     except Exception as e:
         logger.exception("Generation error")

@@ -45,7 +45,14 @@ cd $APP_DIR
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip setuptools wheel
-pip install -r app/requirements.txt
+
+# Install Python dependencies
+echo "Installing Python dependencies..."
+python3 -m pip install -r app/requirements.txt
+
+# Download models
+echo "Downloading models..."
+python3 scripts/download_models.py
 
 # Configure Nginx
 echo "Configuring Nginx..."
