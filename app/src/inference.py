@@ -165,7 +165,6 @@ def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
             return_attention_mask=True
         )
         
-        # Get the length of input tokens to skip them in output
         input_length = len(inputs.input_ids[0])
         
         with torch.inference_mode():
@@ -183,7 +182,6 @@ def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
                     'eos_token_id': tokenizer.eos_token_id,
                 }
             
-            # Common generation parameters
             generation_kwargs.update({
                 'max_length': max_length,
                 'temperature': config['temperature'],
@@ -195,7 +193,6 @@ def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
                 'return_dict_in_generate': True,
             })
             
-            # Generate full sequence
             outputs = model.generate(inputs.input_ids, **generation_kwargs)
             
             # Stream the output token by token
@@ -204,8 +201,9 @@ def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
                 token = generated_sequence[i:i+1]
                 text = tokenizer.decode(token, skip_special_tokens=True)
                 if text:
-                    yield json.dumps({"token": text}) + "\n"
+                    # Send data in SSE format
+                    yield f"data: {json.dumps({'token': text})}\n\n"
                     
     except Exception as e:
         logger.error(f"Error generating text with {model_id}: {str(e)}")
-        yield json.dumps({"error": str(e)}) + "\n"
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
