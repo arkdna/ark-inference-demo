@@ -168,21 +168,7 @@ def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
         input_length = len(inputs.input_ids[0])
         
         with torch.inference_mode():
-            # Different generation settings for GPT-Neo
-            if model_id == 'gpt-neo':
-                attention_mask = (inputs.input_ids != tokenizer.eos_token_id).long()
-                generation_kwargs = {
-                    'attention_mask': attention_mask,
-                    'pad_token_id': tokenizer.eos_token_id,
-                    'eos_token_id': tokenizer.eos_token_id,
-                }
-            else:
-                generation_kwargs = {
-                    'pad_token_id': tokenizer.pad_token_id,
-                    'eos_token_id': tokenizer.eos_token_id,
-                }
-            
-            generation_kwargs.update({
+            generation_kwargs = {
                 'max_length': max_length,
                 'temperature': config['temperature'],
                 'num_return_sequences': 1,
@@ -190,8 +176,10 @@ def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
                 'do_sample': True,
                 'use_cache': True,
                 'num_beams': 1,
+                'pad_token_id': tokenizer.pad_token_id,
+                'eos_token_id': tokenizer.eos_token_id,
                 'return_dict_in_generate': True,
-            })
+            }
             
             outputs = model.generate(inputs.input_ids, **generation_kwargs)
             
@@ -201,10 +189,8 @@ def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
                 token = generated_sequence[i:i+1]
                 text = tokenizer.decode(token, skip_special_tokens=True)
                 if text:
-                    data = json.dumps({"token": text})
-                    yield f"data: {data}\n\n"
+                    yield json.dumps({"token": text}) + "\n"
                     
     except Exception as e:
         logger.error(f"Error generating text with {model_id}: {str(e)}")
-        error_data = json.dumps({"error": str(e)})
-        yield f"data: {error_data}\n\n"
+        yield json.dumps({"error": str(e)}) + "\n"
