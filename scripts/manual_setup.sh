@@ -27,7 +27,6 @@ sudo apt-get install -y \
 # Create app directory structure
 echo "Setting up application directory..."
 APP_DIR="/home/ubuntu/app"
-mkdir -p $APP_DIR/app/{src,static,templates}
 
 # Clone the repository
 echo "Cloning application repository..."
@@ -113,6 +112,10 @@ sudo supervisorctl restart inference-demo
 echo "Configuring firewall..."
 sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
+# Add port 5000 to UFW
+sudo ufw allow 5000/tcp
+# Verify the rules
+sudo ufw status numbered
 sudo ufw --force enable
 
 # Final status check
