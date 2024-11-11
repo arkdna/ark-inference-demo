@@ -13,19 +13,15 @@ logger = logging.getLogger(__name__)
 # Set up the Flask app with explicit template folder
 template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates'))
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'static'))
-app = Flask(__name__, 
-    template_folder=template_dir,
-    static_folder=static_dir)
 
 # Add startup logging
 logger.info("Starting application...")
 logger.info(f"Template directory: {template_dir}")
 logger.info(f"Static directory: {static_dir}")
 
-@app.before_first_request
-def before_first_request():
-    logger.info("Initializing before first request...")
-    # Any initialization code here
+app = Flask(__name__, 
+    template_folder=template_dir,
+    static_folder=static_dir)
 
 @app.route('/')
 def home():
