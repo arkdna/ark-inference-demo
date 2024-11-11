@@ -42,10 +42,27 @@ torch.set_num_threads(4)  # Limit CPU threads
 torch.set_grad_enabled(False)  # Disable gradients
 cudnn.benchmark = True  # Enable cudnn benchmarking
 
-def setup_tokenizer(tokenizer, model_name):
+def setup_tokenizer(tokenizer, model_id):
     """Configure tokenizer based on model type"""
-    if tokenizer.pad_token is None:
+    logger.info(f"Setting up tokenizer for {model_id}")
+    
+    if model_id == 'gpt-neo':
         tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    elif model_id == 'phi-2':
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    elif model_id == 'neural-chat':
+        if tokenizer.pad_token is None:
+            tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+    
+    # Double check pad token is set
+    if tokenizer.pad_token is None:
+        logger.warning(f"Pad token still None for {model_id}, setting to eos_token as fallback")
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    
+    logger.info(f"Tokenizer setup complete for {model_id}. Pad token: {tokenizer.pad_token}")
     return tokenizer
 
 def load_model_and_tokenizer(model_id):
@@ -70,12 +87,20 @@ def load_model_and_tokenizer(model_id):
                 )
                 tokenizer = AutoTokenizer.from_pretrained(model_name)
             
-            # Set model to eval mode without JIT
+            # Configure tokenizer
+            tokenizer = setup_tokenizer(tokenizer, model_id)
+            
+            # Set model to eval mode
             model.eval()
+            
+            # Update model config to match tokenizer
+            model.config.pad_token_id = tokenizer.pad_token_id
             
             # Cache in memory
             loaded_models[model_id] = model
             loaded_tokenizers[model_id] = tokenizer
+            
+            logger.info(f"Successfully loaded and configured {model_id}")
             
         except Exception as e:
             logger.error(f"Error loading model {model_name}: {str(e)}")
