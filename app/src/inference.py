@@ -172,49 +172,39 @@ def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
             # Different generation settings for GPT-Neo
             if model_id == 'gpt-neo':
                 attention_mask = (inputs.input_ids != tokenizer.eos_token_id).long()
-                for outputs in model.generate(
-                    inputs.input_ids,
-                    attention_mask=attention_mask,
-                    max_length=max_length,
-                    temperature=config['temperature'],
-                    num_return_sequences=1,
-                    no_repeat_ngram_size=2,
-                    do_sample=True,
-                    pad_token_id=tokenizer.eos_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                    use_cache=True,
-                    num_beams=1,
-                    streaming=True,
-                    return_dict_in_generate=True,
-                ):
-                    if len(outputs.sequences[0]) <= input_length:
-                        continue
-                    token = outputs.sequences[0][input_length:]
-                    text = tokenizer.decode(token, skip_special_tokens=True)
-                    if text:
-                        yield json.dumps({"token": text}) + "\n"
+                generation_kwargs = {
+                    'attention_mask': attention_mask,
+                    'pad_token_id': tokenizer.eos_token_id,
+                    'eos_token_id': tokenizer.eos_token_id,
+                }
             else:
-                # Original streaming generation for other models
-                for outputs in model.generate(
-                    inputs.input_ids,
-                    max_length=max_length,
-                    temperature=config['temperature'],
-                    num_return_sequences=1,
-                    no_repeat_ngram_size=2,
-                    do_sample=True,
-                    pad_token_id=tokenizer.pad_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                    use_cache=True,
-                    num_beams=1,
-                    streaming=True,
-                    return_dict_in_generate=True,
-                ):
-                    if len(outputs.sequences[0]) <= input_length:
-                        continue
-                    token = outputs.sequences[0][input_length:]
-                    text = tokenizer.decode(token, skip_special_tokens=True)
-                    if text:
-                        yield json.dumps({"token": text}) + "\n"
+                generation_kwargs = {
+                    'pad_token_id': tokenizer.pad_token_id,
+                    'eos_token_id': tokenizer.eos_token_id,
+                }
+            
+            # Common generation parameters
+            generation_kwargs.update({
+                'max_length': max_length,
+                'temperature': config['temperature'],
+                'num_return_sequences': 1,
+                'no_repeat_ngram_size': 2,
+                'do_sample': True,
+                'use_cache': True,
+                'num_beams': 1,
+                'return_dict_in_generate': True,
+            })
+            
+            # Generate full sequence
+            outputs = model.generate(inputs.input_ids, **generation_kwargs)
+            
+            # Stream the output token by token
+            generated_sequence = outputs.sequences[0][input_length:]
+            for i in range(len(generated_sequence)):
+                token = generated_sequence[i:i+1]
+                text = tokenizer.decode(token, skip_special_tokens=True)
+                if text:
+                    yield json.dumps({"token": text}) + "\n"
                     
     except Exception as e:
         logger.error(f"Error generating text with {model_id}: {str(e)}")
