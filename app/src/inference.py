@@ -201,9 +201,10 @@ def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
                 token = generated_sequence[i:i+1]
                 text = tokenizer.decode(token, skip_special_tokens=True)
                 if text:
-                    # Send data in SSE format
-                    yield f"data: {json.dumps({'token': text})}\n\n"
+                    data = json.dumps({"token": text})
+                    yield f"data: {data}\n\n"
                     
     except Exception as e:
         logger.error(f"Error generating text with {model_id}: {str(e)}")
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        error_data = json.dumps({"error": str(e)})
+        yield f"data: {error_data}\n\n"
