@@ -98,7 +98,12 @@ def generate_text(prompt, model_id="phi-2", max_length=None):
             eos_token_id=tokenizer.eos_token_id,
         )
         
-        return tokenizer.decode(outputs[0], skip_special_tokens=True)
+        full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Remove the original prompt from the response
+        response = full_response[len(prompt):].strip()
+        
+        return response
         
     except Exception as e:
         logger.error(f"Error generating text with {model_id}: {str(e)}")

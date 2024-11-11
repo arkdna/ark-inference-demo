@@ -52,7 +52,7 @@
                 </div>
                 <div class="bg-white/10 px-4 py-2 rounded-full">
                     <span class="text-sm">Infrastructure: </span>
-                    <span class="text-sm font-semibold">Ark Private Cloud</span>
+                    <span class="text-sm font-semibold">ark Private Cloud</span>
                 </div>
             </div>
         </div>
@@ -117,6 +117,25 @@
                     <div class="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
                          onclick="setPrompt('What are the key advantages of running AI workloads on CPU-optimized infrastructure?')">
                         "What are the key advantages of CPU-optimized AI infrastructure..."
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add this section to your template -->
+            <div class="bg-white shadow rounded-lg p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">System Resources</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="resource-card">
+                        <h3 class="font-medium">CPU Usage</h3>
+                        <div id="cpuUsage" class="text-2xl font-bold text-blue-600">--%</div>
+                    </div>
+                    <div class="resource-card">
+                        <h3 class="font-medium">Memory Usage</h3>
+                        <div id="memoryUsage" class="text-2xl font-bold text-green-600">-- GB / -- GB</div>
+                    </div>
+                    <div class="resource-card">
+                        <h3 class="font-medium">Models Loaded</h3>
+                        <div id="modelsLoaded" class="text-2xl font-bold text-purple-600">--</div>
                     </div>
                 </div>
             </div>
@@ -207,6 +226,23 @@
                 selectModel(modelId);
             }
         };
+
+        function updateStats() {
+            fetch('/health')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('cpuUsage').textContent = 
+                        `${data.cpu.usage_percent}% (${data.cpu.physical_cores}/${data.cpu.total_cores} cores)`;
+                    document.getElementById('memoryUsage').textContent = 
+                        `${data.memory.used_gb.toFixed(1)}GB / ${data.memory.total_gb.toFixed(1)}GB`;
+                    document.getElementById('modelsLoaded').textContent = 
+                        `${Object.keys(data.models.loaded).length} models`;
+                });
+        }
+
+        // Update stats every 5 seconds
+        setInterval(updateStats, 5000);
+        updateStats(); // Initial update
     </script>
 </body>
 </html> 
