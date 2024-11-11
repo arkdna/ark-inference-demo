@@ -60,7 +60,6 @@ def load_model_and_tokenizer(model_id):
                     model_name,
                     torch_dtype=torch.float32,
                     low_cpu_mem_usage=True,
-                    device_map='auto',  # Optimize device placement
                 )
                 tokenizer = GPT2Tokenizer.from_pretrained(model_name)
             else:
@@ -68,13 +67,11 @@ def load_model_and_tokenizer(model_id):
                     model_name,
                     torch_dtype=torch.float32,
                     low_cpu_mem_usage=True,
-                    device_map='auto',
                 )
                 tokenizer = AutoTokenizer.from_pretrained(model_name)
             
-            # Additional optimizations
-            model.eval()  # Set to evaluation mode
-            model = torch.jit.optimize_for_inference(torch.jit.script(model))  # JIT compilation
+            # Set model to eval mode without JIT
+            model.eval()
             
             # Cache in memory
             loaded_models[model_id] = model
@@ -147,30 +144,52 @@ def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
         input_length = len(inputs.input_ids[0])
         
         with torch.inference_mode():
-            # Enable streaming in generate
-            for outputs in model.generate(
-                inputs.input_ids,
-                max_length=max_length,
-                temperature=config['temperature'],
-                num_return_sequences=1,
-                no_repeat_ngram_size=2,
-                do_sample=True,
-                pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-                use_cache=True,
-                num_beams=1,
-                streaming=True,
-                return_dict_in_generate=True,
-                output_scores=False
-            ):
-                if len(outputs.sequences[0]) <= input_length:
-                    continue
-                    
-                token = outputs.sequences[0][input_length:]
-                text = tokenizer.decode(token, skip_special_tokens=True)
-                
-                if text:
-                    yield json.dumps({"token": text}) + "\n"
+            # Different generation settings for GPT-Neo
+            if model_id == 'gpt-neo':
+                attention_mask = (inputs.input_ids != tokenizer.eos_token_id).long()
+                for outputs in model.generate(
+                    inputs.input_ids,
+                    attention_mask=attention_mask,
+                    max_length=max_length,
+                    temperature=config['temperature'],
+                    num_return_sequences=1,
+                    no_repeat_ngram_size=2,
+                    do_sample=True,
+                    pad_token_id=tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    use_cache=True,
+                    num_beams=1,
+                    streaming=True,
+                    return_dict_in_generate=True,
+                ):
+                    if len(outputs.sequences[0]) <= input_length:
+                        continue
+                    token = outputs.sequences[0][input_length:]
+                    text = tokenizer.decode(token, skip_special_tokens=True)
+                    if text:
+                        yield json.dumps({"token": text}) + "\n"
+            else:
+                # Original streaming generation for other models
+                for outputs in model.generate(
+                    inputs.input_ids,
+                    max_length=max_length,
+                    temperature=config['temperature'],
+                    num_return_sequences=1,
+                    no_repeat_ngram_size=2,
+                    do_sample=True,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    use_cache=True,
+                    num_beams=1,
+                    streaming=True,
+                    return_dict_in_generate=True,
+                ):
+                    if len(outputs.sequences[0]) <= input_length:
+                        continue
+                    token = outputs.sequences[0][input_length:]
+                    text = tokenizer.decode(token, skip_special_tokens=True)
+                    if text:
+                        yield json.dumps({"token": text}) + "\n"
                     
     except Exception as e:
         logger.error(f"Error generating text with {model_id}: {str(e)}")
