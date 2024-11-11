@@ -126,16 +126,34 @@ def generate_text(prompt, model_id="phi-2", max_length=None):
         )
         
         with torch.inference_mode():
-            outputs = model.generate(
-                inputs.input_ids,
-                max_length=max_length,
-                temperature=config['temperature'],
-                num_return_sequences=1,
-                no_repeat_ngram_size=2,
-                do_sample=True,
-                pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-            )
+            # Handle attention mask differently for GPT-Neo and Phi-2
+            if model_id in ['gpt-neo', 'phi-2']:
+                # Create explicit attention mask
+                attention_mask = (inputs.input_ids != tokenizer.eos_token_id).long()
+                outputs = model.generate(
+                    inputs.input_ids,
+                    attention_mask=attention_mask,  # Pass explicit attention mask
+                    max_length=max_length,
+                    temperature=config['temperature'],
+                    num_return_sequences=1,
+                    no_repeat_ngram_size=2,
+                    do_sample=True,
+                    pad_token_id=tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                )
+            else:
+                # For other models (like neural-chat) use standard generation
+                outputs = model.generate(
+                    inputs.input_ids,
+                    attention_mask=inputs.attention_mask,  # Use tokenizer-provided mask
+                    max_length=max_length,
+                    temperature=config['temperature'],
+                    num_return_sequences=1,
+                    no_repeat_ngram_size=2,
+                    do_sample=True,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                )
         
         full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         response = full_response[len(prompt):].strip()
