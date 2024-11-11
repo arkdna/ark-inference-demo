@@ -86,6 +86,46 @@ def load_model_and_tokenizer(model_id):
     
     return loaded_models[model_id], loaded_tokenizers[model_id]
 
+def generate_text(prompt, model_id="phi-2", max_length=None):
+    """Generate text without streaming (for compatibility)"""
+    try:
+        config = MODELS[model_id]
+        max_length = max_length or config['max_length']
+        
+        model, tokenizer = load_model_and_tokenizer(model_id)
+        
+        inputs = tokenizer(
+            prompt, 
+            return_tensors="pt", 
+            padding=True, 
+            truncation=True,
+            max_length=max_length,
+            return_attention_mask=True
+        )
+        
+        with torch.inference_mode():
+            outputs = model.generate(
+                inputs.input_ids,
+                max_length=max_length,
+                temperature=config['temperature'],
+                num_return_sequences=1,
+                no_repeat_ngram_size=2,
+                do_sample=True,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                use_cache=True,
+                num_beams=1,
+            )
+        
+        full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        response = full_response[len(prompt):].strip()
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error generating text with {model_id}: {str(e)}")
+        raise
+
 def generate_stream(prompt, model_id="phi-2", max_length=None) -> Iterator[str]:
     """Generate text with streaming"""
     try:
