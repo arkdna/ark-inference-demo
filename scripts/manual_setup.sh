@@ -52,7 +52,7 @@ python3 -m pip install -r app/requirements.txt
 
 # Download models
 echo "Downloading models..."
-python3 scripts/download_models.py
+python3 app/scripts/download_models.py
 
 # Configure Nginx
 echo "Configuring Nginx..."
