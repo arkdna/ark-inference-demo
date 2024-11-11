@@ -93,21 +93,47 @@ def generate_text(prompt, model_id="phi-2", max_length=None):
         
         model, tokenizer = load_model_and_tokenizer(model_id)
         
-        inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
-        outputs = model.generate(
-            inputs.input_ids,
-            max_length=max_length,
-            temperature=config['temperature'],
-            num_return_sequences=1,
-            no_repeat_ngram_size=2,
-            do_sample=True,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
+        # Set model-specific tokenizer parameters
+        if model_id == 'neural-chat':
+            tokenizer.model_max_length = config['max_length']  # Use the configured max length
+            
+        # Create input with explicit parameters
+        inputs = tokenizer(
+            prompt, 
+            return_tensors="pt", 
+            padding=True, 
+            truncation=True,
+            max_length=max_length,  # Explicitly pass max_length to tokenizer
+            return_attention_mask=True
         )
         
-        full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # Model-specific generation settings
+        if model_id == 'gpt-neo':
+            attention_mask = (inputs.input_ids != tokenizer.eos_token_id).long()
+            outputs = model.generate(
+                inputs.input_ids,
+                attention_mask=attention_mask,
+                max_length=max_length,
+                temperature=config['temperature'],
+                num_return_sequences=1,
+                no_repeat_ngram_size=2,
+                do_sample=True,
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+        else:
+            outputs = model.generate(
+                inputs.input_ids,
+                max_length=max_length,
+                temperature=config['temperature'],
+                num_return_sequences=1,
+                no_repeat_ngram_size=2,
+                do_sample=True,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
         
-        # Remove the original prompt from the response
+        full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         response = full_response[len(prompt):].strip()
         
         return response
