@@ -17,6 +17,16 @@ app = Flask(__name__,
     template_folder=template_dir,
     static_folder=static_dir)
 
+# Add startup logging
+logger.info("Starting application...")
+logger.info(f"Template directory: {template_dir}")
+logger.info(f"Static directory: {static_dir}")
+
+@app.before_first_request
+def before_first_request():
+    logger.info("Initializing before first request...")
+    # Any initialization code here
+
 @app.route('/')
 def home():
     return render_template('index.html', models=MODELS)

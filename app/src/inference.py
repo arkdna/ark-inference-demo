@@ -41,39 +41,46 @@ def setup_tokenizer(tokenizer, model_name):
 
 def load_model_and_tokenizer(model_id):
     """Load and cache model and tokenizer"""
-    if model_id not in loaded_models:
-        config = MODELS[model_id]
-        model_name = config['name']
-        
-        logger.info(f"Loading model: {model_name}")
-        
-        try:
-            if model_id == 'gpt-neo':
-                model = GPTNeoForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float32,
-                    low_cpu_mem_usage=True
-                )
-                tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-            else:
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float32,
-                    low_cpu_mem_usage=True
-                )
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-            
-            tokenizer = setup_tokenizer(tokenizer, model_name)
-            model.eval()  # Set to evaluation mode
-            
-            loaded_models[model_id] = model
-            loaded_tokenizers[model_id] = tokenizer
-            
-        except Exception as e:
-            logger.error(f"Error loading model {model_name}: {str(e)}")
-            raise
+    logger.info(f"Checking cache for model: {model_id}")
+    logger.info(f"Currently loaded models: {list(loaded_models.keys())}")
     
-    return loaded_models[model_id], loaded_tokenizers[model_id]
+    if model_id in loaded_models:
+        logger.info(f"Using cached model: {model_id}")
+        return loaded_models[model_id], loaded_tokenizers[model_id]
+    
+    logger.info(f"Model {model_id} not in cache, loading from scratch...")
+    config = MODELS[model_id]
+    model_name = config['name']
+    
+    try:
+        if model_id == 'gpt-neo':
+            model = GPTNeoForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float32,
+                low_cpu_mem_usage=True
+            )
+            tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float32,
+                low_cpu_mem_usage=True
+            )
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
+        tokenizer = setup_tokenizer(tokenizer, model_name)
+        model.eval()  # Set to evaluation mode
+        
+        # Cache the model and tokenizer
+        loaded_models[model_id] = model
+        loaded_tokenizers[model_id] = tokenizer
+        logger.info(f"Successfully cached model: {model_id}")
+        
+        return model, tokenizer
+        
+    except Exception as e:
+        logger.error(f"Error loading model {model_name}: {str(e)}")
+        raise
 
 def generate_text(prompt, model_id="phi-2", max_length=None):
     """Generate text using the specified model"""
