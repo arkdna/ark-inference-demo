@@ -1,10 +1,10 @@
-from flask import Flask, request, jsonify, render_template, Response, stream_with_context
+from flask import Flask, request, jsonify, render_template
 import logging
 import os
 import torch
 import psutil
 import platform
-from inference import generate_text, generate_stream, MODELS, loaded_models
+from inference import generate_text, MODELS, loaded_models
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
