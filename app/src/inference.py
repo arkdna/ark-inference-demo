@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM, GPTNeoForCausalLM, GPT2Tokenizer, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, GPTNeoForCausalLM, GPT2Tokenizer, BitsAndBytesConfig, AutoConfig
 import torch
 import logging
 import torch.backends.cudnn as cudnn
@@ -14,9 +14,14 @@ MODELS = {
     'gpt-neo': {
         'name': 'EleutherAI/gpt-neo-1.3B',
         'display_name': 'GPT-Neo 1.3B',
-        'description': 'Open-source language model with 1.3B parameters',
-        'max_length': 100,
-        'temperature': 0.7
+        'description': 'EleutherAI GPT-Neo model',
+        'max_length': 256,
+        'temperature': 0.7,
+        'top_p': 0.9,
+        'top_k': 50,
+        'num_beams': 4,
+        'requires_padding': True,
+        'model_type': 'gpt-neo'  # Add model type for special handling
     },
     'phi-2': {
         'name': 'microsoft/phi-2',
@@ -25,16 +30,20 @@ MODELS = {
         'max_length': 256,
         'temperature': 0.7,
         'top_p': 0.9,
-        'top_k': 50
+        'top_k': 50,
+        'num_beams': 4,
+        'requires_padding': True
     },
     'neural-chat': {
         'name': 'Intel/neural-chat-7b-v3-1',
         'display_name': 'Intel Neural Chat 7B',
         'description': 'CPU-optimized conversational model',
-        'max_length': 256,
+        'max_length': 512,
         'temperature': 0.8,
         'top_p': 0.9,
-        'top_k': 50
+        'top_k': 50,
+        'num_beams': 4,
+        'requires_padding': True
     }
 }
 
@@ -76,96 +85,86 @@ def load_model_and_tokenizer(model_id):
         model_name = config['name']
         
         try:
-            # Configure quantization
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.float32,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_type="nf4"
-            )
-            
-            # Load model with quantization config
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                quantization_config=quantization_config,
-                device_map='auto',
-                torch_dtype=torch.float32,
-                low_cpu_mem_usage=True
-            )
-            
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            
-            # Special handling for GPT-Neo if needed
-            if model_id == 'gpt-neo':
+            # Special handling for GPT-Neo
+            if config.get('model_type') == 'gpt-neo':
+                from transformers import GPTNeoForCausalLM, GPT2Tokenizer
+                
+                tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+                # GPT-Neo specific: Set pad token to eos token
                 tokenizer.pad_token = tokenizer.eos_token
                 
-            # Enable better CPU performance
-            if hasattr(torch, 'compile'):  # Check if torch.compile is available
+                model = GPTNeoForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float32,
+                    low_cpu_mem_usage=True
+                )
+                model.config.pad_token_id = model.config.eos_token_id
+                
+            else:
+                # Regular handling for other models
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                if tokenizer.pad_token is None:
+                    tokenizer.pad_token = tokenizer.eos_token
+                
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float32,
+                    low_cpu_mem_usage=True,
+                    device_map='auto'
+                )
+            
+            if hasattr(torch, 'compile'):
                 model = torch.compile(model)
             model.eval()
             
-            # Cache the loaded model and tokenizer
             loaded_models[model_id] = model
             loaded_tokenizers[model_id] = tokenizer
             
         except Exception as e:
             logger.error(f"Error loading model {model_name}: {str(e)}")
-            # Fallback to non-quantized version if quantization fails
-            try:
-                logger.info(f"Attempting to load {model_name} without quantization...")
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float32,
-                    low_cpu_mem_usage=True
-                )
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-                
-                if model_id == 'gpt-neo':
-                    tokenizer.pad_token = tokenizer.eos_token
-                
-                if hasattr(torch, 'compile'):
-                    model = torch.compile(model)
-                model.eval()
-                
-                loaded_models[model_id] = model
-                loaded_tokenizers[model_id] = tokenizer
-            except Exception as fallback_error:
-                logger.error(f"Fallback loading failed for {model_name}: {str(fallback_error)}")
-                raise
+            raise
     
     return loaded_models[model_id], loaded_tokenizers[model_id]
 
 def generate_text(prompt, model_id="phi-2", max_length=None):
     """Generate text without streaming"""
     try:
-        config = MODELS[model_id]
-        max_length = max_length or config['max_length']
-        
         model, tokenizer = load_model_and_tokenizer(model_id)
+        config = MODELS[model_id]
+        max_length = max_length or config.get('max_length', 256)
         
+        # Create attention mask for the input
         inputs = tokenizer(
-            prompt, 
+            prompt,
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=max_length
+            max_length=max_length,
+            return_attention_mask=True
         )
+        
+        # For GPT-Neo, ensure attention mask is properly set
+        if config.get('model_type') == 'gpt-neo':
+            attention_mask = torch.ones_like(inputs.input_ids)
+            inputs['attention_mask'] = attention_mask
         
         with torch.inference_mode():
             outputs = model.generate(
-                inputs.input_ids,
+                input_ids=inputs.input_ids,
+                attention_mask=inputs.attention_mask,
                 max_length=max_length,
-                temperature=0.7,  # Adjust for better coherence
-                top_p=0.9,       # Add nucleus sampling
-                top_k=50,        # Add top-k sampling
-                num_beams=4,     # Add beam search
+                temperature=config.get('temperature', 0.7),
+                top_p=config.get('top_p', 0.9),
+                top_k=config.get('top_k', 50),
+                num_beams=config.get('num_beams', 4),
                 no_repeat_ngram_size=3,
                 do_sample=True,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
-                repetition_penalty=1.2  # Prevent repetitive text
+                repetition_penalty=1.2
             )
         
+        # Decode only the new tokens
         full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         response = full_response[len(prompt):].strip()
         
