@@ -9,6 +9,16 @@ loaded_models = {}
 loaded_tokenizers = {}
 
 MODELS = {
+    'gpt-neo': {
+        'name': 'EleutherAI/gpt-neo-1.3B',
+        'display_name': 'GPT-Neo 1.3B',
+        'description': 'EleutherAI GPT-Neo model',
+        'max_length': 256,
+        'temperature': 0.7,
+        'top_p': 0.9,
+        'top_k': 50,
+        'model_type': 'gpt-neo'
+    },
     'phi-2': {
         'name': 'microsoft/phi-2',
         'display_name': 'Microsoft Phi-2',
@@ -19,15 +29,15 @@ MODELS = {
         'top_k': 50,
         'model_type': 'phi-2'
     },
-    'gpt-neo': {
-        'name': 'EleutherAI/gpt-neo-1.3B',
-        'display_name': 'GPT-Neo 1.3B',
-        'description': 'EleutherAI GPT-Neo model',
-        'max_length': 256,
-        'temperature': 0.7,
+    'neural-chat': {
+        'name': 'Intel/neural-chat-7b-v3-1',
+        'display_name': 'Intel Neural Chat 7B',
+        'description': 'CPU-optimized conversational model',
+        'max_length': 512,
+        'temperature': 0.8,
         'top_p': 0.9,
         'top_k': 50,
-        'model_type': 'gpt-neo'
+        'model_type': 'neural-chat'
     }
 }
 
