@@ -48,6 +48,23 @@
             max-height: 200px;
             overflow-y: auto;
         }
+        .system-status {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-container {
+            margin-top: 10px;
+        }
+        .status-container p {
+            margin: 5px 0;
+        }
+        #cpu-info, #memory-info {
+            font-family: monospace;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -148,6 +165,15 @@
                         <h3 class="font-medium">Models Loaded</h3>
                         <div id="modelsLoaded" class="text-2xl font-bold text-purple-600">--</div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Add this where you want the system info to appear -->
+            <div class="system-status">
+                <h3>System Status</h3>
+                <div class="status-container">
+                    <p>CPU Usage: <span id="cpu-info">Loading...</span></p>
+                    <p><span id="memory-info">Loading...</span></p>
                 </div>
             </div>
         </div>
@@ -291,21 +317,26 @@
                 const response = await fetch('/health');
                 const data = await response.json();
                 
+                // Debug log
+                console.log('Received health data:', data);
+                
                 // Update CPU usage display
                 const cpuInfo = document.getElementById('cpu-info');
-                if (cpuInfo) {
+                if (cpuInfo && data.cpu) {
                     const avgUsage = data.cpu.average_usage.toFixed(1);
                     const totalCores = data.cpu.total_cores;
                     cpuInfo.textContent = `${avgUsage}% (${totalCores}/40 cores)`;
+                    
+                    // Debug log
+                    console.log(`Updated CPU info to: ${avgUsage}% (${totalCores}/40 cores)`);
                 }
                 
-                // Optional: Add detailed CPU core usage
-                const cpuDetailInfo = document.getElementById('cpu-detail-info');
-                if (cpuDetailInfo && data.cpu.usage_per_core) {
-                    const coreUsages = data.cpu.usage_per_core
-                        .map((usage, index) => `Core ${index}: ${usage.toFixed(1)}%`)
-                        .join('\n');
-                    cpuDetailInfo.textContent = coreUsages;
+                // Add memory usage display
+                const memoryInfo = document.getElementById('memory-info');
+                if (memoryInfo && data.memory) {
+                    const memoryPercent = data.memory.percent.toFixed(1);
+                    const totalMemoryGB = (data.memory.total / 1024 / 1024 / 1024).toFixed(1);
+                    memoryInfo.textContent = `Memory Usage: ${memoryPercent}% of ${totalMemoryGB}GB`;
                 }
                 
             } catch (error) {
@@ -313,11 +344,11 @@
             }
         }
 
-        // Update status every 5 seconds
-        setInterval(updateSystemStatus, 5000);
-
-        // Initial update
-        updateSystemStatus();
+        // Call immediately and set interval
+        document.addEventListener('DOMContentLoaded', () => {
+            updateSystemStatus();
+            setInterval(updateSystemStatus, 5000);
+        });
     </script>
 </body>
 </html> 
