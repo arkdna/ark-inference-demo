@@ -23,14 +23,18 @@ MODELS = {
         'display_name': 'Microsoft Phi-2',
         'description': 'Compact and efficient 2.7B parameter model',
         'max_length': 256,
-        'temperature': 0.7
+        'temperature': 0.7,
+        'top_p': 0.9,
+        'top_k': 50
     },
     'neural-chat': {
         'name': 'Intel/neural-chat-7b-v3-1',
         'display_name': 'Intel Neural Chat 7B',
         'description': 'CPU-optimized conversational model',
-        'max_length': 512,
-        'temperature': 0.8
+        'max_length': 256,
+        'temperature': 0.8,
+        'top_p': 0.9,
+        'top_k': 50
     }
 }
 
@@ -72,35 +76,22 @@ def load_model_and_tokenizer(model_id):
         model_name = config['name']
         
         try:
-            if model_id == 'gpt-neo':
-                model = GPTNeoForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float32,
-                    low_cpu_mem_usage=True,
-                )
-                tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-            else:
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float32,
-                    low_cpu_mem_usage=True,
-                )
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
+            # Add quantization for reduced memory usage and faster inference
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float32,
+                low_cpu_mem_usage=True,
+                load_in_8bit=True,  # Enable 8-bit quantization
+                device_map='auto'
+            )
             
-            # Configure tokenizer
-            tokenizer = setup_tokenizer(tokenizer, model_id)
-            
-            # Set model to eval mode
-            model.eval()
-            
-            # Update model config to match tokenizer
-            model.config.pad_token_id = tokenizer.pad_token_id
+            # Enable better CPU performance
+            model = torch.compile(model)  # Using torch.compile for PyTorch 2.0+
+            model.eval()  # Ensure eval mode
             
             # Cache in memory
             loaded_models[model_id] = model
             loaded_tokenizers[model_id] = tokenizer
-            
-            logger.info(f"Successfully loaded and configured {model_id}")
             
         except Exception as e:
             logger.error(f"Error loading model {model_name}: {str(e)}")
@@ -118,42 +109,26 @@ def generate_text(prompt, model_id="phi-2", max_length=None):
         
         inputs = tokenizer(
             prompt, 
-            return_tensors="pt", 
-            padding=True, 
+            return_tensors="pt",
+            padding=True,
             truncation=True,
-            max_length=max_length,
-            return_attention_mask=True
+            max_length=max_length
         )
         
         with torch.inference_mode():
-            # Handle attention mask differently for GPT-Neo and Phi-2
-            if model_id in ['gpt-neo', 'phi-2']:
-                # Create explicit attention mask
-                attention_mask = (inputs.input_ids != tokenizer.eos_token_id).long()
-                outputs = model.generate(
-                    inputs.input_ids,
-                    attention_mask=attention_mask,  # Pass explicit attention mask
-                    max_length=max_length,
-                    temperature=config['temperature'],
-                    num_return_sequences=1,
-                    no_repeat_ngram_size=2,
-                    do_sample=True,
-                    pad_token_id=tokenizer.eos_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                )
-            else:
-                # For other models (like neural-chat) use standard generation
-                outputs = model.generate(
-                    inputs.input_ids,
-                    attention_mask=inputs.attention_mask,  # Use tokenizer-provided mask
-                    max_length=max_length,
-                    temperature=config['temperature'],
-                    num_return_sequences=1,
-                    no_repeat_ngram_size=2,
-                    do_sample=True,
-                    pad_token_id=tokenizer.pad_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                )
+            outputs = model.generate(
+                inputs.input_ids,
+                max_length=max_length,
+                temperature=0.7,  # Adjust for better coherence
+                top_p=0.9,       # Add nucleus sampling
+                top_k=50,        # Add top-k sampling
+                num_beams=4,     # Add beam search
+                no_repeat_ngram_size=3,
+                do_sample=True,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                repetition_penalty=1.2  # Prevent repetitive text
+            )
         
         full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         response = full_response[len(prompt):].strip()

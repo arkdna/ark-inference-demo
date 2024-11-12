@@ -19,6 +19,12 @@ logger.info("Starting application...")
 logger.info(f"Template directory: {template_dir}")
 logger.info(f"Static directory: {static_dir}")
 
+# CPU Optimization settings
+os.environ['OMP_NUM_THREADS'] = '4'  # Optimize OpenMP threads
+os.environ['MKL_NUM_THREADS'] = '4'  # Optimize MKL threads
+torch.set_num_threads(4)             # Set PyTorch threads
+torch.set_num_interop_threads(1)     # Reduce inter-op parallelism
+
 app = Flask(__name__, 
     template_folder=template_dir,
     static_folder=static_dir)
@@ -133,7 +139,4 @@ def stats():
     })
 
 if __name__ == '__main__':
-    # CPU Optimization settings
-    torch.set_num_threads(4)
-    torch.set_grad_enabled(False)
     app.run(host='0.0.0.0', port=5000, debug=True)
