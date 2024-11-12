@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM, GPTNeoForCausalLM, GPT2Tokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM, GPTNeoForCausalLM, GPT2Tokenizer, BitsAndBytesConfig
 import torch
 import logging
 import torch.backends.cudnn as cudnn
@@ -76,26 +76,62 @@ def load_model_and_tokenizer(model_id):
         model_name = config['name']
         
         try:
-            # Add quantization for reduced memory usage and faster inference
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                torch_dtype=torch.float32,
-                low_cpu_mem_usage=True,
-                load_in_8bit=True,  # Enable 8-bit quantization
-                device_map='auto'
+            # Configure quantization
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float32,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4"
             )
             
-            # Enable better CPU performance
-            model = torch.compile(model)  # Using torch.compile for PyTorch 2.0+
-            model.eval()  # Ensure eval mode
+            # Load model with quantization config
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                quantization_config=quantization_config,
+                device_map='auto',
+                torch_dtype=torch.float32,
+                low_cpu_mem_usage=True
+            )
             
-            # Cache in memory
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            
+            # Special handling for GPT-Neo if needed
+            if model_id == 'gpt-neo':
+                tokenizer.pad_token = tokenizer.eos_token
+                
+            # Enable better CPU performance
+            if hasattr(torch, 'compile'):  # Check if torch.compile is available
+                model = torch.compile(model)
+            model.eval()
+            
+            # Cache the loaded model and tokenizer
             loaded_models[model_id] = model
             loaded_tokenizers[model_id] = tokenizer
             
         except Exception as e:
             logger.error(f"Error loading model {model_name}: {str(e)}")
-            raise
+            # Fallback to non-quantized version if quantization fails
+            try:
+                logger.info(f"Attempting to load {model_name} without quantization...")
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float32,
+                    low_cpu_mem_usage=True
+                )
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                
+                if model_id == 'gpt-neo':
+                    tokenizer.pad_token = tokenizer.eos_token
+                
+                if hasattr(torch, 'compile'):
+                    model = torch.compile(model)
+                model.eval()
+                
+                loaded_models[model_id] = model
+                loaded_tokenizers[model_id] = tokenizer
+            except Exception as fallback_error:
+                logger.error(f"Fallback loading failed for {model_name}: {str(fallback_error)}")
+                raise
     
     return loaded_models[model_id], loaded_tokenizers[model_id]
 
