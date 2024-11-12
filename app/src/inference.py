@@ -1,29 +1,14 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM, GPTNeoForCausalLM, GPT2Tokenizer, BitsAndBytesConfig, AutoConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, GPTNeoForCausalLM, GPT2Tokenizer
 import torch
 import logging
-import torch.backends.cudnn as cudnn
-from transformers import set_seed
-import numpy as np
-from typing import Iterator
-import json
-import psutil
 
 logger = logging.getLogger(__name__)
 
-# Model configurations
+# Initialize storage for loaded models and tokenizers
+loaded_models = {}
+loaded_tokenizers = {}
+
 MODELS = {
-    'gpt-neo': {
-        'name': 'EleutherAI/gpt-neo-1.3B',
-        'display_name': 'GPT-Neo 1.3B',
-        'description': 'EleutherAI GPT-Neo model',
-        'max_length': 256,
-        'temperature': 0.7,
-        'top_p': 0.9,
-        'top_k': 50,
-        'num_beams': 4,
-        'requires_padding': True,
-        'model_type': 'gpt-neo'  # Add model type for special handling
-    },
     'phi-2': {
         'name': 'microsoft/phi-2',
         'display_name': 'Microsoft Phi-2',
@@ -32,95 +17,65 @@ MODELS = {
         'temperature': 0.7,
         'top_p': 0.9,
         'top_k': 50,
-        'num_beams': 4,
-        'requires_padding': True
+        'model_type': 'phi-2'
     },
-    'neural-chat': {
-        'name': 'Intel/neural-chat-7b-v3-1',
-        'display_name': 'Intel Neural Chat 7B',
-        'description': 'CPU-optimized conversational model',
-        'max_length': 512,
-        'temperature': 0.8,
+    'gpt-neo': {
+        'name': 'EleutherAI/gpt-neo-1.3B',
+        'display_name': 'GPT-Neo 1.3B',
+        'description': 'EleutherAI GPT-Neo model',
+        'max_length': 256,
+        'temperature': 0.7,
         'top_p': 0.9,
         'top_k': 50,
-        'num_beams': 4,
-        'requires_padding': True
+        'model_type': 'gpt-neo'
     }
 }
 
-# Global model cache
-loaded_models = {}
-loaded_tokenizers = {}
-
-torch.set_num_threads(4)  # Limit CPU threads
-torch.set_grad_enabled(False)  # Disable gradients
-cudnn.benchmark = True  # Enable cudnn benchmarking
-
-def setup_tokenizer(tokenizer, model_id):
-    """Configure tokenizer based on model type"""
-    logger.info(f"Setting up tokenizer for {model_id}")
-    
-    if model_id == 'gpt-neo':
-        tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-    elif model_id == 'phi-2':
-        tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-    elif model_id == 'neural-chat':
-        if tokenizer.pad_token is None:
-            tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-    
-    # Double check pad token is set
-    if tokenizer.pad_token is None:
-        logger.warning(f"Pad token still None for {model_id}, setting to eos_token as fallback")
-        tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-    
-    logger.info(f"Tokenizer setup complete for {model_id}. Pad token: {tokenizer.pad_token}")
-    return tokenizer
-
 def load_model_and_tokenizer(model_id):
-    """Load and cache model and tokenizer with optimizations"""
     if model_id not in loaded_models:
         config = MODELS[model_id]
         model_name = config['name']
         
         try:
-            # Configure CPU settings for model
-            torch.set_float32_matmul_precision('high')
+            logger.info(f"Loading model and tokenizer for {model_name}")
             
-            # Determine optimal number of threads for model
-            num_cores = psutil.cpu_count(logical=False)
-            optimal_threads = min(num_cores, 32)  # Cap at 32 for stability
+            # Load tokenizer first
+            if config.get('model_type') == 'gpt-neo':
+                tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+            else:
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
             
-            with torch.inference_mode():
-                with torch.cpu.amp.autocast():  # Enable AMP for CPU
-                    model = AutoModelForCausalLM.from_pretrained(
-                        model_name,
-                        torch_dtype=torch.float32,
-                        low_cpu_mem_usage=True,
-                        device_map='cpu',  # Explicitly set to CPU
-                    )
+            # Ensure pad token is set
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
             
-            # Set model-specific thread settings
-            model.config.num_attention_heads = optimal_threads
-            
-            # Enable torch compile with optimal settings
-            if hasattr(torch, 'compile'):
-                model = torch.compile(
-                    model,
-                    mode='reduce-overhead',
-                    fullgraph=True,
-                    dynamic=False
+            # Load model
+            if config.get('model_type') == 'gpt-neo':
+                model = GPTNeoForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float32,
+                    low_cpu_mem_usage=True
+                )
+            else:
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float32,
+                    low_cpu_mem_usage=True,
+                    device_map='auto'
                 )
             
+            # Set pad token ID in model config
+            model.config.pad_token_id = tokenizer.pad_token_id
+            
+            if hasattr(torch, 'compile'):
+                model = torch.compile(model)
             model.eval()
             
-            # Log model configuration
-            logger.info(f"Model {model_name} loaded with {optimal_threads} threads")
-            
+            # Store both model and tokenizer
             loaded_models[model_id] = model
             loaded_tokenizers[model_id] = tokenizer
+            
+            logger.info(f"Successfully loaded model and tokenizer for {model_name}")
             
         except Exception as e:
             logger.error(f"Error loading model {model_name}: {str(e)}")
@@ -129,7 +84,6 @@ def load_model_and_tokenizer(model_id):
     return loaded_models[model_id], loaded_tokenizers[model_id]
 
 def generate_text(prompt, model_id="phi-2", max_length=None):
-    """Generate text without streaming"""
     try:
         model, tokenizer = load_model_and_tokenizer(model_id)
         config = MODELS[model_id]
@@ -144,11 +98,6 @@ def generate_text(prompt, model_id="phi-2", max_length=None):
             max_length=max_length,
             return_attention_mask=True
         )
-        
-        # For GPT-Neo, ensure attention mask is properly set
-        if config.get('model_type') == 'gpt-neo':
-            attention_mask = torch.ones_like(inputs.input_ids)
-            inputs['attention_mask'] = attention_mask
         
         with torch.inference_mode():
             outputs = model.generate(
