@@ -37,6 +37,17 @@
             0%, 100% { opacity: 0.4; transform: scale(0.8); }
             50% { opacity: 1; transform: scale(1); }
         }
+        .system-info {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .small {
+            font-size: 0.8em;
+            max-height: 200px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -274,6 +285,39 @@
         // Update stats every 5 seconds
         setInterval(updateStats, 5000);
         updateStats(); // Initial update
+
+        async function updateSystemStatus() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                // Update CPU usage display
+                const cpuInfo = document.getElementById('cpu-info');
+                if (cpuInfo) {
+                    const avgUsage = data.cpu.average_usage.toFixed(1);
+                    const totalCores = data.cpu.total_cores;
+                    cpuInfo.textContent = `${avgUsage}% (${totalCores}/40 cores)`;
+                }
+                
+                // Optional: Add detailed CPU core usage
+                const cpuDetailInfo = document.getElementById('cpu-detail-info');
+                if (cpuDetailInfo && data.cpu.usage_per_core) {
+                    const coreUsages = data.cpu.usage_per_core
+                        .map((usage, index) => `Core ${index}: ${usage.toFixed(1)}%`)
+                        .join('\n');
+                    cpuDetailInfo.textContent = coreUsages;
+                }
+                
+            } catch (error) {
+                console.error('Error updating system status:', error);
+            }
+        }
+
+        // Update status every 5 seconds
+        setInterval(updateSystemStatus, 5000);
+
+        // Initial update
+        updateSystemStatus();
     </script>
 </body>
 </html> 

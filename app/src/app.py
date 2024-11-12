@@ -73,13 +73,14 @@ def generate():
 
 @app.route('/health')
 def health():
-    cpu_percent = psutil.cpu_percent(interval=1, percpu=True)
+    # Get CPU usage with a 0.1 second interval for more responsive updates
+    cpu_percent = psutil.cpu_percent(interval=0.1, percpu=True)
     memory = psutil.virtual_memory()
     
     return jsonify({
         'status': 'healthy',
         'cpu': {
-            'total_cores': psutil.cpu_count(),
+            'total_cores': psutil.cpu_count(),  # This should now return 40
             'usage_per_core': cpu_percent,
             'average_usage': sum(cpu_percent) / len(cpu_percent)
         },
