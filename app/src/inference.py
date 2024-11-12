@@ -6,6 +6,7 @@ from transformers import set_seed
 import numpy as np
 from typing import Iterator
 import json
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -85,37 +86,38 @@ def load_model_and_tokenizer(model_id):
         model_name = config['name']
         
         try:
-            # Special handling for GPT-Neo
-            if config.get('model_type') == 'gpt-neo':
-                from transformers import GPTNeoForCausalLM, GPT2Tokenizer
-                
-                tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-                # GPT-Neo specific: Set pad token to eos token
-                tokenizer.pad_token = tokenizer.eos_token
-                
-                model = GPTNeoForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float32,
-                    low_cpu_mem_usage=True
-                )
-                model.config.pad_token_id = model.config.eos_token_id
-                
-            else:
-                # Regular handling for other models
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-                if tokenizer.pad_token is None:
-                    tokenizer.pad_token = tokenizer.eos_token
-                
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float32,
-                    low_cpu_mem_usage=True,
-                    device_map='auto'
+            # Configure CPU settings for model
+            torch.set_float32_matmul_precision('high')
+            
+            # Determine optimal number of threads for model
+            num_cores = psutil.cpu_count(logical=False)
+            optimal_threads = min(num_cores, 32)  # Cap at 32 for stability
+            
+            with torch.inference_mode():
+                with torch.cpu.amp.autocast():  # Enable AMP for CPU
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_name,
+                        torch_dtype=torch.float32,
+                        low_cpu_mem_usage=True,
+                        device_map='cpu',  # Explicitly set to CPU
+                    )
+            
+            # Set model-specific thread settings
+            model.config.num_attention_heads = optimal_threads
+            
+            # Enable torch compile with optimal settings
+            if hasattr(torch, 'compile'):
+                model = torch.compile(
+                    model,
+                    mode='reduce-overhead',
+                    fullgraph=True,
+                    dynamic=False
                 )
             
-            if hasattr(torch, 'compile'):
-                model = torch.compile(model)
             model.eval()
+            
+            # Log model configuration
+            logger.info(f"Model {model_name} loaded with {optimal_threads} threads")
             
             loaded_models[model_id] = model
             loaded_tokenizers[model_id] = tokenizer

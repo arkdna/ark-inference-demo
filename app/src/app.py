@@ -19,11 +19,19 @@ logger.info("Starting application...")
 logger.info(f"Template directory: {template_dir}")
 logger.info(f"Static directory: {static_dir}")
 
-# CPU Optimization settings
-os.environ['OMP_NUM_THREADS'] = '4'  # Optimize OpenMP threads
-os.environ['MKL_NUM_THREADS'] = '4'  # Optimize MKL threads
-torch.set_num_threads(4)             # Set PyTorch threads
-torch.set_num_interop_threads(1)     # Reduce inter-op parallelism
+# CPU Configuration
+num_physical_cores = psutil.cpu_count(logical=False)  # Physical cores
+num_logical_cores = psutil.cpu_count(logical=True)    # Logical cores (including hyperthreading)
+
+# Optimize thread settings for your 40 CPU setup
+os.environ['OMP_NUM_THREADS'] = str(num_physical_cores)  # OpenMP threads
+os.environ['MKL_NUM_THREADS'] = str(num_physical_cores)  # MKL threads
+torch.set_num_threads(num_physical_cores)                # PyTorch threads
+torch.set_num_interop_threads(min(4, num_physical_cores))  # Inter-op parallelism
+
+# Log CPU information
+logger.info(f"Number of CPU cores: Physical={num_physical_cores}, Logical={num_logical_cores}")
+logger.info(f"PyTorch threads: {torch.get_num_threads()}")
 
 app = Flask(__name__, 
     template_folder=template_dir,
@@ -65,53 +73,23 @@ def generate():
 
 @app.route('/health')
 def health():
-    # Get CPU information
-    cpu_count = psutil.cpu_count()
-    cpu_physical = psutil.cpu_count(logical=False)
-    cpu_percent = psutil.cpu_percent(interval=1)
-    
-    # Get memory information
+    cpu_percent = psutil.cpu_percent(interval=1, percpu=True)
     memory = psutil.virtual_memory()
-    memory_total_gb = memory.total / (1024 ** 3)  # Convert to GB
-    memory_used_gb = memory.used / (1024 ** 3)
-    memory_percent = memory.percent
-    
-    # Get loaded models information
-    loaded_model_info = {
-        model_id: {
-            'name': MODELS[model_id]['display_name'],
-            'parameters': '1.3B' if model_id == 'gpt-neo' else '2.7B' if model_id == 'phi-2' else '7B'
-        }
-        for model_id in loaded_models.keys()
-    }
     
     return jsonify({
-        "status": "healthy",
-        "system_info": {
-            "platform": platform.platform(),
-            "python_version": platform.python_version(),
-            "torch_version": torch.__version__
+        'status': 'healthy',
+        'cpu': {
+            'total_cores': psutil.cpu_count(),
+            'usage_per_core': cpu_percent,
+            'average_usage': sum(cpu_percent) / len(cpu_percent)
         },
-        "cpu": {
-            "total_cores": cpu_count,
-            "physical_cores": cpu_physical,
-            "usage_percent": cpu_percent,
-            "torch_threads": torch.get_num_threads()
+        'memory': {
+            'total': memory.total,
+            'available': memory.available,
+            'percent': memory.percent
         },
-        "memory": {
-            "total_gb": round(memory_total_gb, 2),
-            "used_gb": round(memory_used_gb, 2),
-            "usage_percent": memory_percent
-        },
-        "models": {
-            "loaded": loaded_model_info,
-            "available": MODELS
-        },
-        "optimizations": {
-            "torch_grad_enabled": torch.is_grad_enabled(),
-            "device": "cpu",
-            "low_memory_mode": True
-        }
+        'torch_threads': torch.get_num_threads(),
+        'model_cache_size': len(loaded_models)
     })
 
 # Add a new route for detailed stats
